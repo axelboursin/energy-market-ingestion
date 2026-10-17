@@ -40,7 +40,7 @@ jobs:
           tags: ${{ steps.ecr.outputs.registry }}/market-ingest:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "~1.16"
           terraform_wrapper: false
