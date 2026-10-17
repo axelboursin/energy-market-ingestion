@@ -1,0 +1,66 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production # required reviewers; the deploy role trusts only this environment
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      IMAGE_TAG: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Build and push the arm64 image (immutable tag = commit SHA)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/arm64
+          push: true
+          provenance: false # Lambda needs a single-manifest image
+          tags: ${{ steps.ecr.outputs.registry }}/market-ingest:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.16"
+          terraform_wrapper: false
+      - name: Terraform apply
+        working-directory: terraform
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="key=market-ingest/prod.tfstate" \
+            -backend-config="region=$AWS_REGION"
+          terraform plan -input=false -var="image_tag=$IMAGE_TAG" -out=tfplan
+          terraform apply -input=false tfplan
+      - name: Smoke test (re-ingests today, idempotent)
+        working-directory: terraform
+        run: |
+          fn=$(terraform output -raw function_name)
+          today=$(TZ=Europe/Paris date +%F)
+          aws lambda invoke --function-name "$fn" \
+            --cli-binary-format raw-in-base64-out \
+            --payload "{\"delivery_date\": \"$today\", \"bidding_zones\": [\"FR\"]}" out.json > meta.json
+          cat out.json
+          ! grep -q FunctionError meta.json
+          jq -e '.ok == 1' out.json

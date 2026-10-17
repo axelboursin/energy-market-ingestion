@@ -1,0 +1,12 @@
+__pycache__/
+.venv/
+.pytest_cache/
+.ruff_cache/
+dist/
+.terraform/
+*.tfstate
+*.tfstate.*
+tfplan
+backend.hcl
+out.json
+meta.json

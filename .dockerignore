@@ -1,0 +1,6 @@
+.git
+.venv
+tests
+terraform
+scripts
+**/__pycache__
