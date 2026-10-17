@@ -1,5 +1,5 @@
 # AWS Lambda container image (arm64 / Graviton: ~20% cheaper per GB-second).
-FROM ghcr.io/astral-sh/uv:0.5.11 AS uv
+FROM ghcr.io/astral-sh/uv:0.13.1 AS uv
 
 FROM public.ecr.aws/lambda/python:3.13 AS build
 COPY --from=uv /uv /usr/local/bin/uv
